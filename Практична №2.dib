@@ -1,0 +1,373 @@
+#!markdown
+
+# Практична робота №2
+
+#!markdown
+
+### Налаштування
+
+#!fsharp
+
+#r  "nuget: Emgu.CV.runtime.windows"
+
+#!fsharp
+
+#r "nuget: Plotly.NET"
+#r "nuget: Plotly.NET.Interactive"
+
+#!fsharp
+
+#load @".\PracticeAssignment2\ImgProc\PracticeAssignment2.fs"
+#r  @"..\Допоміжні утиліти\ImgProcUtilities\ImgProcUtilities\bin\Release\net6.0\ImgProcUtilities.dll"
+
+#!fsharp
+
+open ImgProcUtilities.Display
+open PracticeAssignment2
+open Emgu.CV.Structure
+open Emgu.CV.CvEnum
+open Emgu.CV
+open Emgu.CV.Util
+open Emgu.CV.Structure
+open Emgu.CV.Plot
+open Plotly.NET
+
+#!markdown
+
+## Завдання 1
+
+#!markdown
+
+Створимо чорно-білу рамку
+
+#!fsharp
+
+let whiteSqr = createTaskImg ()
+
+#!fsharp
+
+whiteSqr.DisplayAsHtmlImg()
+
+#!markdown
+
+Створимо 3 однакових копії
+
+#!fsharp
+
+let mutable fR = whiteSqr
+let mutable fG = whiteSqr
+let mutable fB = whiteSqr
+
+#!markdown
+
+R = 1, G = 0.5, B = 0.1
+
+#!fsharp
+
+fR <- whiteSqr
+fG <- whiteSqr * 0.5
+fB <- whiteSqr * 0.1
+
+let orange = merge fR fG fB
+
+#!fsharp
+
+orange.DisplayAsHtmlImg()
+
+#!markdown
+
+R = 0.4, G = 1, B = 0.6
+
+#!fsharp
+
+fR <- whiteSqr * 0.4
+fG <- whiteSqr
+fB <- whiteSqr * 0.6
+
+let green = merge fR fG fB
+
+#!fsharp
+
+green.DisplayAsHtmlImg()
+
+#!markdown
+
+R = 0.8, G = 0.1, B = 1
+
+#!fsharp
+
+fR <- whiteSqr * 0.8
+fG <- whiteSqr * 0.1
+fB <- whiteSqr
+
+let purple = merge fR fG fB
+
+#!fsharp
+
+purple.DisplayAsHtmlImg()
+
+#!markdown
+
+## Завдання №2
+
+#!markdown
+
+### 2.1 Колірні компоненти
+
+#!markdown
+
+Завантажимо зображення та розділимо на три канали
+
+#!fsharp
+
+let skull = new Mat("./img/skull.jpg", ImreadModes.Unchanged)
+let rgbChannels = skull.Split()
+
+#!markdown
+
+#### B
+
+#!fsharp
+
+rgbChannels[0].DisplayAsHtmlImg()
+
+#!markdown
+
+#### G
+
+#!fsharp
+
+rgbChannels[1].DisplayAsHtmlImg()
+
+#!markdown
+
+#### R
+
+#!fsharp
+
+rgbChannels[2].DisplayAsHtmlImg()
+
+#!markdown
+
+### 2.2 Негатив
+
+#!fsharp
+
+let skullNegative = skull.ToImage<Bgr, byte>().Not()
+
+#!fsharp
+
+skullNegative.Mat.DisplayAsHtmlImg()
+
+#!markdown
+
+### 2.3 Усереднене монохромне зображення
+
+#!fsharp
+
+let f = (new Image<Rgb, byte>("img/flowers.jpg")).Mat
+
+let toDouble (mat:Mat) = 
+    mat.ConvertTo(mat, DepthType.Cv64F)
+    mat
+
+let fChannels = f.Split()
+
+// Перетворим на double
+let fChannelsDouble = fChannels |> Array.map toDouble
+
+let fd1, fd2, fd3 = fChannelsDouble[0], fChannelsDouble[1], fChannelsDouble[2]
+
+#!fsharp
+
+(fd1 / 255.0).DisplayAsHtmlImg()
+
+#!fsharp
+
+(fd2 / 255.0).DisplayAsHtmlImg()
+
+#!fsharp
+
+(fd3 / 255.0).DisplayAsHtmlImg()
+
+#!fsharp
+
+let fdm = fd1 + fd2 + fd3
+let _, max, _, _ = fdm.MinMax()
+let fd = fdm / (max[0])
+
+#!fsharp
+
+fd.DisplayAsHtmlImg()
+
+#!markdown
+
+### 2.4 Монохромна яскравість
+
+#!fsharp
+
+let I = 0.299 * fChannels[0] + 0.587 * fChannels[1] + 0.114 * fChannels[2]
+
+// Конвертуємо в byte тільки з метою відображення
+let IByte = new Mat()
+I.ConvertTo(IByte, DepthType.Cv8U)
+
+#!fsharp
+
+IByte.DisplayAsHtmlImg()
+
+#!markdown
+
+### 2.5 Емпіричні розподіли яскравостей
+
+#!markdown
+
+#### Знайдемо гістограми двох зображень
+
+#!fsharp
+
+let fdForHist, IForHist = new Mat(), new Mat()
+
+// Змінимо глибину заради створення гістограм
+fd.ConvertTo(fdForHist,DepthType.Cv8U, 255)
+I.ConvertTo(IForHist,DepthType.Cv8U)
+
+// Потрібні дві гістограми для розподілів яскравости
+let fdHist, IHist = 
+    new DenseHistogram(256,new RangeF(0f,1000f)), new DenseHistogram(256,new RangeF(0f,1000f))
+
+// Створимо гістограму для двох монохромних зображень
+CvInvoke.CalcHist(new VectorOfMat(fdForHist), [|0|], null, fdHist, [|256|], [|0f;256f|], false)
+CvInvoke.CalcHist(new VectorOfMat(IForHist), [|0|], null, IHist, [|256|], [|0f; 256f|], false)
+
+#!markdown
+
+#### Побудуємо графіки
+
+#!markdown
+
+##### I
+
+#!fsharp
+
+let binsI = [0..IHist.BinDimension[0]-1]
+let yI = (IHist.GetData() :?> float32[,])[*,0]
+let IHistChart = Seq.zip binsI yI |> Chart.Line
+
+#!fsharp
+
+IHistChart
+
+#!markdown
+
+##### fD 
+
+#!fsharp
+
+let binsFd = [0..fdHist.BinDimension[0]-1]
+let yFd = (fdHist.GetData() :?> float32[,])[*,0]
+
+let fdHistChart = 
+    Seq.zip binsFd yFd |> Chart.Line
+
+#!fsharp
+
+fdHistChart
+
+#!markdown
+
+Кореляція
+
+#!fsharp
+
+CvInvoke.CompareHist(IHist, fdHist, HistogramCompMethod.Correl)
+
+#!markdown
+
+### 2.6
+
+#!markdown
+
+#### Перетворимо на монохромне
+
+#!fsharp
+
+let f1 = f.ToImage<Gray, byte>()
+
+#!fsharp
+
+f1.Mat.DisplayAsHtmlImg()
+
+#!fsharp
+
+let h = new DenseHistogram(256,new RangeF(0f,10000f))
+
+let h1 = new DenseHistogram(26, new RangeF(0f, 10000f))
+h1.Create(26,1, DepthType.Cv32F,1)
+
+CvInvoke.CalcHist(new VectorOfMat(f1.Mat), [|0|], null, h, [|256|], [|0f;256f|], false)
+
+
+let n = 10
+
+let data = h.GetData() :?> float32[,]
+
+// Кожний десятий
+let horz = [|0..10..(h.Rows-1)|]
+
+let mutable h1Data = Array.empty<float32>
+
+for i in horz do
+    h1Data <- Array.append h1Data data[i,*]
+
+h1.SetTo(h1Data)
+
+#!fsharp
+
+let histo = Chart.Spline(horz, h1Data)
+histo
+
+#!markdown
+
+### 2.7 Перетворити зображення з RGB на HSV
+
+#!fsharp
+
+let fHsv = new Mat()
+CvInvoke.CvtColor(f,fHsv, ColorConversion.Rgb2Hsv)
+
+#!fsharp
+
+fHsv.DisplayAsHtmlImg()
+
+#!markdown
+
+### 2.8 Побудувати з RGB зображення індексовані зображення
+
+#!markdown
+
+##### MATLAB
+
+#!markdown
+
+[g, map] = rgb2ind(f,4);
+
+figure, imshow(g,map); title('4 кольори');
+
+#!markdown
+
+![4 кольори](./img/flowersInd.png)
+
+#!markdown
+
+### 2.9 Перетворення індексованого зображення на монохромне
+
+#!markdown
+
+indGray = ind2gray(g,map);
+
+figure, imshow(indGray); title('Монохромне');
+
+#!markdown
+
+![Монохромне](./img/flowersGray.png)
